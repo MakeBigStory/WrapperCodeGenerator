@@ -274,18 +274,22 @@ const PRECLUDE_CODE : &'static str = r#"
                 Ok(())
             }
 
+            fn is_debug(&self) -> bool {
+                true
+            }
+
 "#;
 
 const PRE_PROCESS_CALL : &'static str = r#"
-        func_info.func_param_infos = param_infos;
-        func_info.func_param_values = param_values;
-        self.pre_process(&func_info)?;
+            func_info.func_param_infos = param_infos;
+            func_info.func_param_values = param_values;
+            self.pre_process(&func_info)?;
 "#;
 
 const POST_PROCESS_CALL : &'static str = r#"
-        let res_desc = format!("{:?}", res);
+            let res_desc = format!("{:?}", res);
 
-        self.post_process(&func_info, &res_desc)?;
+            self.post_process(&func_info, &res_desc)?;
 "#;
 
 impl FuncProcessor {
@@ -312,10 +316,10 @@ impl FuncProcessor {
 
         if matches.is_empty() {
             return Err(
-                        FuncProcessError {
-                            error_desc : "no func body find !!!".to_string()
-                        }
-                    )
+                FuncProcessError {
+                    error_desc : "no func body find !!!".to_string()
+                }
+            )
         } else {
             let mut func_body = matches.get(0).unwrap().to_string();
             // TODO: ugly logic, remove "{"
@@ -402,27 +406,29 @@ impl FuncProcessor {
         let mut composed_func = func_decl + "{\n";
 
         match self.pre_process(&mut func_info) {
-                Ok(pre_process_code) => {
-                    composed_func = composed_func + "\n" + &pre_process_code;
-                    composed_func = composed_func + "\n";
-                },
-                Err(error) => return Err(error)
-            }
+            Ok(pre_process_code) => {
+                composed_func = composed_func + "\n" + &pre_process_code;
+                composed_func = composed_func + "\n";
+            },
+            Err(error) => return Err(error)
+        }
 
         composed_func = composed_func + "let res = {\n" + &func_body + "}";
 
 
         match self.post_process(&mut func_info) {
-                Ok(post_process_code) => {
-                    composed_func = composed_func + ";\n" + &post_process_code;
-                    composed_func = composed_func + "\n";
-                },
-                Err(error) => return Err(error)
-            }
+            Ok(post_process_code) => {
+                composed_func = composed_func + ";\n" + &post_process_code;
+                composed_func = composed_func + "\n";
+            },
+            Err(error) => return Err(error)
+        }
 
         composed_func = composed_func + "res\n";
 
         composed_func = composed_func + "}\n";
+
+        composed_func = composed_func + "else {\n" + &func_body + "\n}\n \n}\n";
 
         Ok(composed_func)
     }
@@ -433,11 +439,12 @@ impl FuncProcessor {
         // TODO: foolish format! marco, I can not make these pattern code as const static &str ....
         let mut res = format!(
             r#"
-                let mut param_values: Vec<&Param> = vec![];
-                let mut param_infos: Vec<&ParamInfo> = vec![];
+                if self.is_debug() {{
+                    let mut param_values: Vec<&Param> = vec![];
+                    let mut param_infos: Vec<&ParamInfo> = vec![];
 
-                let mut func_info = FuncInfo::new();
-                func_info.func_name = "{}".to_string();
+                    let mut func_info = FuncInfo::new();
+                    func_info.func_name = "{}".to_string();
         "#, func_info.func_name);
 
         for param in &func_info.func_params {
@@ -448,8 +455,8 @@ impl FuncProcessor {
                                         let param_value = {}.to_string();
                                         param_values.push(&param_value);
                                     "#,
-                                    param.param_name,
-                                    param.param_type, param.param_name);
+                                     param.param_name,
+                                     param.param_type, param.param_name);
             } else if param.param_type.contains("[") { // slice
                 res = res + &format!(r#"
                                         let mut param_info = ParamInfo::new("{}", "{}");
@@ -457,15 +464,15 @@ impl FuncProcessor {
                                         let param_value = {}.to_vec();
                                         param_values.push(&param_value);
                                     "#,
-                                    param.param_name,
-                                    param.param_type, param.param_name);
+                                     param.param_name,
+                                     param.param_type, param.param_name);
             } else {
                 res = res + &format!(r#"
                                         let mut param_info = ParamInfo::new("{}", "{}");
                                         param_infos.push(&param_info);
                                         param_values.push(&{});
                                     "#,
-                                    param.param_name, param.param_type, param.param_name);
+                                     param.param_name, param.param_type, param.param_name);
             }
         }
 
@@ -612,7 +619,7 @@ impl<'v, 'a> Visitor<'v> for FuncComposer<'a> {
                         compose_result.success = true;
                     }
 
-            }
+                }
 
             Err(_) => {
                 compose_result.error = Some(FuncProcessError{
