@@ -34,13 +34,83 @@ struct FuncProcessError {
     error_desc: String
 }
 
-struct FuncProcessor {
-    func_body_regex : Regex,
-    func_decl_regex : Regex,
-    func_param_regex : Regex,
+trait FuncHandler {
+    fn compose_func(&self, func_name: &str, func_code: &str) -> Result<String, FuncProcessError>;
+
+    fn get_prelude_code(&self) -> &str;
 }
 
-const PRECLUDE_CODE : &'static str = r#"
+struct FuncFfiCfgProcessor {
+    ffi_call_regex : Regex,
+    ffi_gl_func_regex: Regex
+}
+
+impl FuncFfiCfgProcessor {
+    fn new() -> Self {
+        // TODO: my regex is ugly .....
+        let ffi_call_regex =  regex::Regex::new(r"[\n]?.*ffi::gl([^;]|\n)*\);").unwrap();
+
+        // TODO: my regex is ugly .....
+        let ffi_gl_func_regex = regex::Regex::new(r"ffi::gl.*\(").unwrap();
+
+        FuncFfiCfgProcessor {
+            ffi_call_regex,
+            ffi_gl_func_regex
+        }
+    }
+}
+
+const GET_PROC_ADDRESS_CALL_CODE : &'static str = r#"ptr("#;
+
+const ANDROID_CFG : &'static str = r#"[cfg(target_os="android")]"#;
+const IOS_CFG : &'static str = r#"[cfg(target_os="ios")]"#;
+
+impl FuncHandler for FuncFfiCfgProcessor {
+    fn compose_func(&self, func_name: &str, func_code: &str) -> Result<String, FuncProcessError> {
+
+        let code_parts: Vec<&str> = self.ffi_call_regex.split(func_code).collect();
+
+        let matches: Vec<&str> = self.ffi_call_regex.find_iter(func_code).map(
+            |match_| match_.as_str()).collect();
+
+        if matches.is_empty() {
+            return Err(FuncProcessError {
+                error_desc: "Can not find ffi call !!!".to_string()
+            });
+        }
+
+        let ffi_call_code = matches.get(0).unwrap();
+        // println!("matches: {:?} \n", ffi_call_code);
+
+        let replaced_ffi_call_code = self.ffi_gl_func_regex.replace(ffi_call_code,
+                                                                    GET_PROC_ADDRESS_CALL_CODE).to_string();
+
+        // println!("replaced {:?}", replaced_ffi_call_code);
+
+        let res = code_parts[0].to_string() + "\n" +
+            IOS_CFG +
+            &ffi_call_code + "\n" +
+            ANDROID_CFG +
+            &replaced_ffi_call_code + "\n" +
+            code_parts[1] + "\n";
+
+        // println!("res {:?}", res);
+
+        Ok(res)
+    }
+
+    fn get_prelude_code(&self) -> &str {
+        return "";
+    }
+}
+
+struct FuncAopProcessor {
+    func_body_regex : Regex,
+    func_decl_regex : Regex,
+    func_param_regex : Regex
+}
+
+const PRELUDE_CODE: &'static str = r#"
     use super::data_struct::*;
     use super::ffi::*;
     use super::*;
@@ -292,7 +362,7 @@ const POST_PROCESS_CALL : &'static str = r#"
             self.post_process(&func_info, &res_desc)?;
 "#;
 
-impl FuncProcessor {
+impl FuncAopProcessor {
     fn new() -> Self {
         // TODO: my regex is ugly .....
         let func_body_regex = Regex::new(r"\{\n(.*\n)*").unwrap();
@@ -303,7 +373,7 @@ impl FuncProcessor {
         // TODO: my regex is ugly .....
         let func_param_regex = Regex::new(r"\((\n|.)*&mut self(\n|[^>])*\)").unwrap();
 
-        FuncProcessor {
+        FuncAopProcessor {
             func_body_regex,
             func_decl_regex,
             func_param_regex
@@ -331,7 +401,6 @@ impl FuncProcessor {
             return Ok(func_body)
         }
     }
-
 
     fn extract_func_decl(&self, func_code: &str) -> Result<String, FuncProcessError> {
         let matches: Vec<&str> = self.func_decl_regex.find_iter(func_code).map(|match_| match_.as_str())
@@ -390,47 +459,12 @@ impl FuncProcessor {
         }
     }
 
-    fn compose_func(&self, func_name: &str, func_code: &str) -> Result<String, FuncProcessError> {
-        let func_body = self.extract_func_body(func_code)?;
+    fn add_cfg_on_ffi_call(&self, func_name: &str, func_code: &str) -> Result<String, FuncProcessError> {
+        let v: Vec<&str> = func_code.split("^ffi::gl.*);").collect();
 
-        let func_decl = self.extract_func_decl(func_code)?;
+        println!("cfg {:?}", v);
 
-        let func_param_infos = self.extract_func_params(func_code);
-
-        let mut func_info = FuncInfo {
-            func_name: func_name.to_string(),
-            func_params: func_param_infos
-        };
-
-
-        let mut composed_func = func_decl + "{\n";
-
-        match self.pre_process(&mut func_info) {
-            Ok(pre_process_code) => {
-                composed_func = composed_func + "\n" + &pre_process_code;
-                composed_func = composed_func + "\n";
-            },
-            Err(error) => return Err(error)
-        }
-
-        composed_func = composed_func + "let res = {\n" + &func_body + "}";
-
-
-        match self.post_process(&mut func_info) {
-            Ok(post_process_code) => {
-                composed_func = composed_func + ";\n" + &post_process_code;
-                composed_func = composed_func + "\n";
-            },
-            Err(error) => return Err(error)
-        }
-
-        composed_func = composed_func + "res\n";
-
-        composed_func = composed_func + "}\n";
-
-        composed_func = composed_func + "else {\n" + &func_body + "\n}\n \n}\n";
-
-        Ok(composed_func)
+        Ok("".to_string())
     }
 
     // TODO: in fact, I prefer Option + Closure to make pre_process as input, but fucking Rust lifetime ....
@@ -488,6 +522,55 @@ impl FuncProcessor {
     }
 }
 
+impl FuncHandler for FuncAopProcessor {
+    fn compose_func(&self, func_name: &str, func_code: &str) -> Result<String, FuncProcessError> {
+        let func_body = self.extract_func_body(func_code)?;
+
+        let func_decl = self.extract_func_decl(func_code)?;
+
+        let func_param_infos = self.extract_func_params(func_code);
+
+        let mut func_info = FuncInfo {
+            func_name: func_name.to_string(),
+            func_params: func_param_infos
+        };
+
+
+        let mut composed_func = func_decl + "{\n";
+
+        match self.pre_process(&mut func_info) {
+            Ok(pre_process_code) => {
+                composed_func = composed_func + "\n" + &pre_process_code;
+                composed_func = composed_func + "\n";
+            },
+            Err(error) => return Err(error)
+        }
+
+        composed_func = composed_func + "let res = {\n" + &func_body + "}";
+
+
+        match self.post_process(&mut func_info) {
+            Ok(post_process_code) => {
+                composed_func = composed_func + ";\n" + &post_process_code;
+                composed_func = composed_func + "\n";
+            },
+            Err(error) => return Err(error)
+        }
+
+        composed_func = composed_func + "res\n";
+
+        composed_func = composed_func + "}\n";
+
+        composed_func = composed_func + "else {\n" + &func_body + "\n}\n \n}\n";
+
+        Ok(composed_func)
+    }
+
+    fn get_prelude_code(&self) -> &str {
+        return PRELUDE_CODE;
+    }
+}
+
 fn parse<'a, T: ?Sized + AsRef<Path>>(path: &T,
                                       parse_session: &'a ParseSess)
                                       -> Result<ast::Crate, Option<DiagnosticBuilder<'a>>> {
@@ -502,22 +585,44 @@ fn parse<'a, T: ?Sized + AsRef<Path>>(path: &T,
     }
 }
 
+const FFI_MODE : &'static str = r#"ffi"#;
+const AOP_MODE : &'static str = r#"aop"#;
+
+fn get_func_handler(mode: &str) -> Option<Box<FuncHandler>>{
+    if FFI_MODE == mode {
+        Some(Box::new(FuncFfiCfgProcessor::new()))
+    } else if AOP_MODE == mode {
+        Some(Box::new(FuncAopProcessor::new()))
+    } else {
+        None
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let parse_session = ParseSess::new(FilePathMapping::empty());
-    let krate = parse(args[1].as_str(), &parse_session).unwrap();
+    if args.len() < 2 {
+        println!("Error !!!, some arg is missed !!!");
 
-    let mut func_composer = FuncComposer::new(parse_session.codemap());
+        return;
+    }
+
+    let parse_session = ParseSess::new(FilePathMapping::empty());
+    let krate = parse(args[2].as_str(), &parse_session).unwrap();
+
+    let func_handler = get_func_handler(args[1].as_str());
+
+    if func_handler.is_none() {
+        println!("Error !!!, mode arg {} is invalid !!!", args[1]);
+
+        return;
+    }
+
+    let mut func_composer = FuncComposer::new(parse_session.codemap(),
+                                              func_handler.unwrap());
 
     func_composer.compose(&krate);
 
-    println!("{}", compose_whole_file(&func_composer.output()));
-}
-
-fn compose_whole_file(func_codes : &str) -> String {
-    let file_content = PRECLUDE_CODE.to_string() + func_codes + "\n}";
-
-    file_content
+    println!("{}", &func_composer.output());
 }
 
 struct FuncComposeResult {
@@ -539,15 +644,15 @@ impl FuncComposeResult {
 }
 
 struct FuncComposer<'a> {
-    func_processor: FuncProcessor,
+    func_handler: Box<FuncHandler>,
     func_codemap: &'a CodeMap,
     func_compose_result: Vec<FuncComposeResult>
 }
 
 impl<'a> FuncComposer<'a> {
-    pub fn new(codemap: &'a CodeMap) -> Self {
+    pub fn new(codemap: &'a CodeMap, handler: Box<FuncHandler>) -> Self {
         FuncComposer {
-            func_processor: FuncProcessor::new(),
+            func_handler: handler,
             func_codemap: codemap,
             func_compose_result: vec![]
         }
@@ -567,6 +672,8 @@ impl<'a> FuncComposer<'a> {
                 println!("Error!!! {} compose fail !!! {:?}", compose_result.func_name, compose_result.error)
             }
         }
+
+        output = self.func_handler.get_prelude_code().to_string() + &output;
 
         output
     }
@@ -605,7 +712,7 @@ impl<'v, 'a> Visitor<'v> for FuncComposer<'a> {
         match func_code {
             Ok(desc) =>
                 match func_filter(&fn_name) {
-                    true => match self.func_processor.compose_func(&fn_name, &desc) {
+                        true => match self.func_handler.compose_func(&fn_name, &desc) {
                         Ok(composed_func) => {
                             compose_result.func_code = composed_func.clone();
                             compose_result.success = true;
