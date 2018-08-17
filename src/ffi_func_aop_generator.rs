@@ -331,43 +331,63 @@ impl <'a>FFIFuncAopGenerator<'a> {
     // TODO: in fact, I prefer Option + Closure to make pre_process as input, but fucking Rust lifetime ....
     fn pre_process(&self, func_info: &mut FuncInfo) -> Result<String, FuncProcessError> {
 
-        // TODO: foolish format! marco, I can not make these pattern code as const static &str ....
-        let mut res = format!(
-            r#"
-                if self.is_debug() {{
-                    let mut param_values: Vec<&Param> = vec![];
-                    let mut param_infos: Vec<&ParamInfo> = vec![];
+        let mut res = r#"
+            if self.is_debug() {
+        "#.to_string();
 
-                    let mut func_info = FuncInfo::new();
-                    func_info.func_name = "{}".to_string();
+        for param in &func_info.func_params {
+            if param.param_type == "&str" {
+                res = res + &format!(r#"
+                                        let mut param_info_{} = ParamInfo::new("{}", "{}");
+                                        let param_value_{} = {}.to_string();
+                                    "#,
+                                     param.param_name,
+                                     param.param_type, param.param_name, param.param_name, param.param_name);
+            } else if param.param_type.contains("[") { // slice
+                res = res + &format!(r#"
+                                        let mut param_info_{} = ParamInfo::new("{}", "{}");
+                                        let param_value_{} = {}.to_vec();
+                                    "#,
+                                     param.param_name,
+                                     param.param_type, param.param_name, param.param_name, param.param_name);
+            } else {
+                res = res + &format!(r#"
+                                        let mut param_info_{} = ParamInfo::new("{}", "{}");
+                                    "#,
+                                     param.param_name, param.param_type, param.param_name);
+            }
+        }
+
+
+        // TODO: foolish format! marco, I can not make these pattern code as const static &str ....
+        res =  res + &format!(
+            r#"
+                let mut param_values: Vec<&Param> = vec![];
+                let mut param_infos: Vec<&ParamInfo> = vec![];
+
+                let mut func_info = FuncInfo::new();
+                func_info.func_name = "{}".to_string();
         "#, func_info.func_name);
 
         for param in &func_info.func_params {
             if param.param_type == "&str" {
                 res = res + &format!(r#"
-                                        let mut param_info = ParamInfo::new("{}", "{}");
-                                        param_infos.push(&param_info);
-                                        let param_value = {}.to_string();
-                                        param_values.push(&param_value);
+                                        param_infos.push(&param_info_{});
+                                        param_values.push(&param_value_{});
                                     "#,
-                                     param.param_name,
-                                     param.param_type, param.param_name);
+                                     param.param_name, param.param_name);
             } else if param.param_type.contains("[") { // slice
                 res = res + &format!(r#"
-                                        let mut param_info = ParamInfo::new("{}", "{}");
-                                        param_infos.push(&param_info);
-                                        let param_value = {}.to_vec();
-                                        param_values.push(&param_value);
+                                        param_infos.push(&param_info_{});
+                                        param_values.push(&param_value_{});
                                     "#,
-                                     param.param_name,
-                                     param.param_type, param.param_name);
+                                     param.param_name, param.param_name);
             } else {
                 res = res + &format!(r#"
-                                        let mut param_info = ParamInfo::new("{}", "{}");
-                                        param_infos.push(&param_info);
+                                        param_infos.push(&param_info_{});
                                         param_values.push(&{});
                                     "#,
-                                     param.param_name, param.param_type, param.param_name);
+                                     param.param_name, param.param_name);
             }
         }
 

@@ -266,7 +266,7 @@ const PRELUDE_CODE: &'static str = r#"
                 self.debug
             }
 
-            fn set_debug(&self, debug: bool) {
+            fn set_debug(&mut self, debug: bool) {
                 self.debug = debug;
             }
 
