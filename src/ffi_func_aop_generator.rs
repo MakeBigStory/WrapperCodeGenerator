@@ -492,6 +492,12 @@ impl <'a>FFIFuncAopGenerator<'a> {
 
 fn func_filter(func_name : &str) -> bool {
     return func_name != "gl_get_error";
+//        && func_name != "gl_tex_image_3d"
+//        && func_name != "gl_tex_sub_image_3d"
+//        && func_name != "gl_get_uniform_indices"
+//        && func_name != "gl_map_buffer_range"
+//        && func_name != "gl_transform_feedback_varyings"
+//        && func_name != "gl_debug_message_callback";
 }
 
 impl<'v, 'a> Visitor<'v> for FFIFuncAopGenerator<'a> {
@@ -513,25 +519,24 @@ impl<'v, 'a> Visitor<'v> for FFIFuncAopGenerator<'a> {
         match func_code {
             Ok(desc) =>
                 {
-
                     generated_func.func_code = desc.clone();
 
-                    match func_filter(&fn_name) {
-                        true => match self.process_func(generated_func) {
-                            Ok(mut success_generated_func) => {
-                                success_generated_func.success = true;
-                                self.generate_result.push(success_generated_func);
-                            },
-                            Err(error) => {
-//                                compose_result.error = Some(error);
-                                panic!("Process {} error {:?} !!!", fn_name, error);
-                            }
-                        },
-                        false => {
-                            generated_func.success = true;
-                            self.generate_result.push(generated_func);
-                        }
+                    match self.process_func(generated_func) {
+                        Ok(mut success_generated_func) => {
+                            success_generated_func.success = true;
 
+                            match func_filter(&fn_name) {
+                                true => {},
+                                false => {
+                                    success_generated_func.func_code = desc.clone();
+                                }
+                            }
+
+                            self.generate_result.push(success_generated_func);
+                        },
+                        Err(error) => {
+                            panic!("Process {} error {:?} !!!", fn_name, error);
+                        }
                     }
                 }
 
