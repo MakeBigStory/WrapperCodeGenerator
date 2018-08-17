@@ -266,18 +266,18 @@ const PRELUDE_CODE: &'static str = r#"
                 self.debug
             }
 
-            fn set_debug(&mut self, debug: bool) {
+            pub fn set_debug(&mut self, debug: bool) {
                 self.debug = debug;
             }
 
-            fn new() -> Self {
+            pub fn new() -> Self {
                 Wrapper {
                     debug: false,
                     {ptr_null}
                 }
             }
 
-            fn init(&mut self) -> Result<(), InitError> {
+            pub fn init(&mut self) -> Result<(), InitError> {
                 {ptr_init}
 
                 Ok(())
