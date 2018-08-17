@@ -223,7 +223,7 @@ const PRELUDE_CODE: &'static str = r#"
     }
 
     impl ParamInfo {
-        fn new(param_name: &str, param_type: &str) -> Self {
+        fn new(param_type: &str, param_name: &str) -> Self {
             ParamInfo {
                 param_type: param_type.to_string(),
                 param_name: param_name.to_string()
